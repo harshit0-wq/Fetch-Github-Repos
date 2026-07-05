@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Repositories Fetcher</title>
+    
+    <style>
+        :root {
+            --corp-bg: #f9fafb;
+            --corp-text: #111827;
+            --corp-border: #d1d5db;
+            --corp-error: #dc2626;
+            --corp-error-bg: #fef2f2;
+            --corp-focus: #111827;
+            --corp-muted: #6b7280;
+            --corp-card-hover: #f3f4f6;
+            --corp-warning: #facc15;
+            --corp-success: #16a34a;
+            --font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        /* Base Resets */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--corp-bg);
+            color: var(--corp-text);
+            font-family: var(--font-family);
+            min-height: 100vh;
+            padding: 1rem;
+            display: flex;
+            justify-content: center;
+            padding-top: 3rem; /* Space for network banner */
+        }
+        @media (min-width: 768px) { body { padding: 3rem 2rem 2rem 2rem; } }
+        a { text-decoration: none; color: inherit; }
+
+        *:focus { outline: none; }
+        *:focus-visible:not(#results-section) {
+            outline: 2px solid var(--corp-focus);
+            outline-offset: 2px;
+        }
+
+        /* Network Banner */
+        .network-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            padding: 0.75rem;
+            font-weight: 600;
+            color: #ffffff;
+            z-index: 1000;
+            transform: translateY(-100%);
+            transition: transform 0.3s ease-in-out;
+        }
+        .network-banner.show { transform: translateY(0); }
+        .network-banner.offline { background-color: var(--corp-error); }
+        .network-banner.online { background-color: var(--corp-success); }
+
+        /* Layout & Containers */
+        .main-container {
+            background-color: #ffffff;
+            border: 1px solid var(--corp-border);
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 56rem; 
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+        }
+        @media (min-width: 768px) { .main-container { padding: 2rem; } }
+
+        .header {
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--corp-border);
+            padding-bottom: 1rem;
+        }
+        .header-title { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+        .header-subtitle { color: var(--corp-muted); font-size: 0.875rem; margin-top: 0.5rem; }
+
+        /* Form Elements */
+        .search-form { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem; }
+        @media (min-width: 640px) { .search-form { flex-direction: row; } }
+        
+        .input-group { flex-grow: 1; display: flex; flex-direction: column; }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
+        
+        .input-field {
+            width: 100%;
+            padding: 1rem;
+            border: 1px solid var(--corp-border);
+            border-radius: 0.25rem;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+        .input-field.error { border-color: var(--corp-error); }
+        .error-text { color: var(--corp-error); font-size: 0.875rem; margin-top: 0.5rem; }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 0.25rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s, opacity 0.2s;
+            border: 1px solid transparent;
+            text-align: center;
+        }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-primary { 
+            background-color: var(--corp-text); 
+            color: #ffffff; 
+            padding: 1rem 2rem; 
+            white-space: nowrap; 
+            min-width: 220px; /* Prevents layout shifting when text changes to "Fetching..." */
+        }
+        .btn-primary:hover:not(:disabled) { background-color: #374151; }
+        .btn-outline { background-color: #ffffff; border-color: var(--corp-border); color: var(--corp-text); font-size: 0.875rem; }
+        .btn-outline:hover:not(:disabled) { background-color: var(--corp-bg); }
+
+        /* Status & Feedback Containers */
+        .status-container {
+            min-height: 60px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+        }
+        .loader-wrapper { display: flex; flex-direction: column; align-items: center; }
+        .loader-text { font-size: 0.875rem; color: var(--corp-muted); margin-top: 1rem; }
+        
+        .spinner {
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border-left-color: var(--corp-text);
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .message-box {
+            text-align: center;
+            padding: 1rem;
+            border: 1px solid var(--corp-border);
+            border-radius: 0.25rem;
+            background-color: var(--corp-bg);
+            width: 100%;
+        }
+        .message-box.error { background-color: var(--corp-error-bg); border-color: #fca5a5; }
+        .message-text { font-weight: 500; color: var(--corp-text); white-space: pre-line; }
+        .message-box.error .message-text { color: #991b1b; }
+        .retry-btn { margin-top: 1rem; padding: 0.5rem 1.5rem; }
+
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem 1rem;
+            text-align: center;
+            background-color: var(--corp-bg);
+            border: 1px dashed var(--corp-border);
+            border-radius: 0.5rem;
+            width: 100%;
+        }
+        .empty-state-icon { font-size: 3rem; margin-bottom: 1rem; }
+        .empty-state-title { font-size: 1.125rem; font-weight: 600; color: var(--corp-text); }
+        .empty-state-desc { font-size: 0.875rem; color: var(--corp-muted); margin-top: 0.5rem; }
+
+        /* Results Area */
+        .results-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            align-items: flex-start;
+        }
+        @media (min-width: 640px) {
+            .results-actions { flex-direction: row; justify-content: space-between; align-items: flex-end; }
+        }
+        .results-meta { display: flex; flex-direction: column; gap: 0.25rem; }
+        .results-count { font-weight: 500; color: #374151; }
+        
+        .profile-link { 
+            font-size: 0.875rem; 
+            font-weight: 500;
+            color: #2563eb; 
+            text-decoration: none;
+            margin-top: 0.25rem;
+            display: inline-block;
+        }
+        .profile-link:hover { text-decoration: underline; }
+
+        .actions-group { display: flex; flex-direction: column; gap: 1rem; width: 100%; }
+        @media (min-width: 640px) { .actions-group { flex-direction: row; width: auto; align-items: center; } }
+        
+        .select-field {
+            background-color: #ffffff;
+            border: 1px solid var(--corp-border);
+            padding: 0.5rem 1rem;
+            border-radius: 0.25rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--corp-text);
+            width: 100%;
+        }
+        .select-field:disabled { background-color: var(--corp-bg); opacity: 0.6; cursor: not-allowed; }
+        @media (min-width: 640px) { .select-field { width: auto; } }
+
+        /* Repository Grid & Cards */
+        .results-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+        @media (min-width: 768px) { .results-grid { grid-template-columns: repeat(2, 1fr); } }
+
+        .repo-card {
+            padding: 1rem;
+            border: 1px solid var(--corp-border);
+            border-radius: 0.25rem;
+            background-color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 1rem;
+            height: 100%;
+            transition: background-color 0.2s;
+        }
+        .repo-card:hover { background-color: var(--corp-card-hover); }
+        
+        .repo-header { display: flex; flex-direction: column; gap: 0.5rem; }
+        .repo-title { font-size: 1.125rem; font-weight: 700; color: var(--corp-text); word-break: break-word; }
+        .repo-desc { font-size: 0.875rem; color: #4b5563; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+        .repo-footer {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-top: auto;
+        }
+        @media (min-width: 640px) {
+            .repo-footer { flex-direction: row; justify-content: space-between; align-items: center; }
+        }
+        .repo-stats { display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.75rem; font-weight: 500; color: var(--corp-muted); align-items: center; }
+        .stat-star { color: var(--corp-warning); font-size: 1rem; line-height: 1; margin-right: 0.25rem; }
+        .stat-item { display: flex; align-items: center; gap: 0.15rem; }
+        
+        .repo-link { font-size: 0.875rem; font-weight: 600; color: var(--corp-text); white-space: nowrap; }
+        .repo-link:hover { text-decoration: underline; }
+
+        /* Utility */
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="network-banner" class="network-banner" role="alert" aria-live="assertive"></div>
+
+    <main class="main-container">
+        
+        <header class="header">
+            <h1 class="header-title">Fetch GitHub Repos</h1>
+            <p class="header-subtitle">Corporate Portal: Retrieve public repository records safely and consistently.</p>
+        </header>
+
+        <form id="search-form" class="search-form" novalidate>
+            <div class="input-group">
+                <label for="username-input" class="sr-only">GitHub Username</label>
+                <input 
+                    type="text" 
+                    id="username-input" 
+                    placeholder="Enter GitHub username (e.g., octocat)" 
+                    class="input-field"
+                    aria-label="GitHub Username"
+                    aria-describedby="input-error"
+                >
+                <span id="input-error" class="error-text hidden" aria-live="assertive"></span>
+            </div>
+            <button type="submit" id="submit-btn" class="btn btn-primary" aria-label="Fetch GitHub Repositories">
+                Fetch Repositories
+            </button>
+        </form>
+
+        <div id="status-container" class="status-container hidden" aria-live="polite">
+            <div id="loader" class="loader-wrapper hidden">
+                <div class="spinner" role="status" aria-live="polite" aria-label="Loading repositories"></div>
+                <p id="loader-text" class="loader-text">Loading GitHub repositories...</p>
+            </div>
+            
+            <div id="message-container" class="message-box hidden">
+                <p id="message-text" class="message-text"></p>
+                <button type="button" id="retry-btn" class="btn btn-primary retry-btn hidden">Retry</button>
+            </div>
+        </div>
+
+        <section aria-label="Search Results" id="results-section" class="hidden" tabindex="-1">
+            <div id="results-actions" class="results-actions hidden">
+                <div class="results-meta">
+                    <p id="results-count" class="results-count" aria-live="polite"></p>
+                    <a id="profile-link" class="profile-link hidden" target="_blank" rel="noopener noreferrer"></a>
+                </div>
+                
+                <div class="actions-group">
+                    <label for="sort-select" class="sr-only">Sort repositories</label>
+                    <select id="sort-select" class="select-field" disabled>
+                        <option value="updated">Sort By: Updated</option>
+                        <option value="stars">Sort By: Stars</option>
+                        <option value="name">Sort By: Name</option>
+                    </select>
+                    <button id="export-btn" class="btn btn-outline" aria-label="Export to Excel" disabled>
+                        Export to Excel
+                    </button>
+                </div>
+            </div>
+            <div id="results-grid" class="results-grid"></div>
+        </section>
+
+    </main>
+
+    <script>
+        /**
+         * MODULE: Validation
+         */
+        const Validation = {
+            isValidUsername(username) {
+                return /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i.test(username);
+            }
+        };
+
+        /**
+         * MODULE: API
+         */
+        const API = {
+            async fetchAllRepositories(username) {
+                let allRepos = [];
+                let page = 1;
+                
+                while (true) {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000);
+                    
+                    try {
+                        const url = `https://api.github.com/users/${encodeURIComponent(username)}/repos?sort=updated&per_page=100&page=${page}`;
+                        const response = await fetch(url, {
+                            headers: { 'Accept': 'application/vnd.github.v3+json' },
+                            signal: controller.signal
+                        });
+                        
+                        clearTimeout(timeoutId);
+
+                        if (!response.ok) {
+                            if (response.status === 404) throw new Error("User not found.");
+                            if (response.status === 403) throw new Error("GitHub API rate limit exceeded. Please wait a few minutes before trying again.");
+                            
+                            if (response.status >= 500 && response.status <= 504) {
+                                throw new Error("Service temporarily unavailable.\nPlease try again.");
+                            }
+                            throw new Error(`Network error: ${response.status}`);
+                        }
+
+                        const data = await response.json();
+                        if (!Array.isArray(data)) throw new Error("Unexpected response format from API.");
+
+                        allRepos = allRepos.concat(data);
+                        if (data.length < 100) break;
+                        page++;
+
+                    } catch (err) {
+                        clearTimeout(timeoutId);
+                        throw err; 
+                    }
+                }
+                return allRepos;
+            }
+        };
+
+        /**
+         * MODULE: Export
+         */
+        const Export = {
+            toCSV(data, username) {
+                if (data.length === 0) return;
+
+                const headers = ["Repository Name", "Description", "Language", "Stars", "Forks", "Repository URL"];
+                const dateStr = new Date().toISOString().split('T')[0];
+
+                const metadataRows = [
+                    `"GitHub Username:","${username}"`,
+                    `"GitHub Profile:","https://github.com/${username}"`,
+                    `"Total Repositories:","${data.length}"`,
+                    `"Export Date:","${dateStr}"`,
+                    "", // Empty row for spacing
+                    headers.join(',')
+                ].join('\n');
+                
+                const rows = data.map(repo => {
+                    const name = `"${(repo.name || '').replace(/"/g, '""')}"`;
+                    const desc = `"${(repo.description || '').replace(/"/g, '""')}"`;
+                    const lang = `"${(repo.language || 'N/A').replace(/"/g, '""')}"`;
+                    const stars = repo.stargazers_count;
+                    const forks = repo.forks_count;
+                    const url = `"${repo.html_url}"`;
+                    return [name, desc, lang, stars, forks, url].join(',');
+                });
+
+                const csvContent = [metadataRows, ...rows].join('\n');
+                const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                
+                const fileName = `${username}_repositories_${dateStr}.csv`;
+                
+                link.setAttribute('href', url);
+                link.setAttribute('download', fileName);
+                link.style.display = 'none';
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }
+        };
+
+        /**
+         * MODULE: UI
+         */
+        const UI = {
+            els: {
+                networkBanner: document.getElementById('network-banner'),
+                form: document.getElementById('search-form'),
+                input: document.getElementById('username-input'),
+                inputError: document.getElementById('input-error'),
+                statusContainer: document.getElementById('status-container'),
+                loader: document.getElementById('loader'),
+                messageContainer: document.getElementById('message-container'),
+                messageText: document.getElementById('message-text'),
+                retryBtn: document.getElementById('retry-btn'),
+                resultsSection: document.getElementById('results-section'),
+                resultsGrid: document.getElementById('results-grid'),
+                resultsActions: document.getElementById('results-actions'),
+                resultsCount: document.getElementById('results-count'),
+                profileLink: document.getElementById('profile-link'),
+                sortSelect: document.getElementById('sort-select'),
+                exportBtn: document.getElementById('export-btn'),
+                submitBtn: document.getElementById('submit-btn')
+            },
+
+            setNetworkStatus(isOnline) {
+                if (isOnline) {
+                    this.els.networkBanner.textContent = "Connection restored";
+                    this.els.networkBanner.className = "network-banner show online";
+                    setTimeout(() => {
+                        this.els.networkBanner.classList.remove('show');
+                    }, 3000);
+                } else {
+                    this.els.networkBanner.textContent = "No internet connection";
+                    this.els.networkBanner.className = "network-banner show offline";
+                }
+            },
+
+            showInputError(msg) {
+                this.els.input.classList.add('error');
+                this.els.inputError.textContent = msg;
+                this.els.inputError.classList.remove('hidden');
+                this.els.input.focus();
+            },
+
+            clearInputError() {
+                this.els.input.classList.remove('error');
+                this.els.inputError.classList.add('hidden');
+            },
+
+            showLoading() {
+                this.els.statusContainer.classList.remove('hidden');
+                this.els.loader.classList.remove('hidden');
+                this.els.messageContainer.classList.add('hidden');
+                this.els.retryBtn.classList.add('hidden');
+                this.els.resultsSection.classList.add('hidden');
+                
+                this.els.submitBtn.disabled = true;
+                this.els.submitBtn.textContent = 'Fetching repositories...';
+            },
+
+            hideLoading() {
+                this.els.submitBtn.disabled = false;
+                this.els.submitBtn.textContent = 'Fetch Repositories';
+                this.els.loader.classList.add('hidden');
+            },
+
+            showMessage(msg, isError = false, showRetry = false) {
+                this.els.statusContainer.classList.remove('hidden');
+                this.els.loader.classList.add('hidden');
+                this.els.messageContainer.classList.remove('hidden');
+                this.els.resultsSection.classList.add('hidden');
+                
+                this.els.messageText.textContent = msg;
+                
+                if (isError) {
+                    this.els.messageContainer.classList.add('error');
+                } else {
+                    this.els.messageContainer.classList.remove('error');
+                }
+
+                if (showRetry) {
+                    this.els.retryBtn.classList.remove('hidden');
+                    setTimeout(() => this.els.retryBtn.focus(), 50); 
+                } else {
+                    this.els.retryBtn.classList.add('hidden');
+                }
+            },
+
+            hideMessage() {
+                this.els.statusContainer.classList.add('hidden');
+                this.els.messageContainer.classList.add('hidden');
+            },
+            
+            renderEmptyState() {
+                this.els.resultsSection.classList.remove('hidden');
+                this.els.resultsGrid.innerHTML = '';
+                this.els.resultsActions.classList.add('hidden');
+                this.els.sortSelect.disabled = true;
+                this.els.profileLink.classList.add('hidden');
+                
+                const emptyContainer = document.createElement('div');
+                emptyContainer.className = "empty-state";
+                emptyContainer.style.gridColumn = "1 / -1";
+                
+                const icon = document.createElement('div');
+                icon.className = "empty-state-icon";
+                icon.textContent = "📂";
+                
+                const title = document.createElement('h3');
+                title.className = "empty-state-title";
+                title.textContent = "No repositories found.";
+                
+                const desc = document.createElement('p');
+                desc.className = "empty-state-desc";
+                desc.textContent = "Try searching another GitHub username.";
+                
+                emptyContainer.appendChild(icon);
+                emptyContainer.appendChild(title);
+                emptyContainer.appendChild(desc);
+                
+                this.els.resultsGrid.appendChild(emptyContainer);
+                
+                // FIXED: Use preventScroll: true to avoid the layout jump upward
+                this.els.resultsSection.focus({ preventScroll: true });
+            },
+
+            renderRepositories(repos, username) {
+                this.els.resultsSection.classList.remove('hidden');
+                this.els.resultsGrid.innerHTML = '';
+                this.hideMessage();
+                
+                if (repos.length === 0) {
+                    this.renderEmptyState();
+                    return;
+                }
+
+                this.els.resultsActions.classList.remove('hidden');
+                this.els.exportBtn.disabled = false;
+                this.els.sortSelect.disabled = false;
+                
+                this.els.resultsCount.textContent = `${repos.length} repositories found.`;
+                
+                const profileUsername = repos[0]?.owner?.login || username;
+                this.els.profileLink.href = `https://github.com/${profileUsername}`;
+                this.els.profileLink.textContent = `Open Profile`;
+                this.els.profileLink.classList.remove('hidden');
+
+                repos.forEach(repo => {
+                    const card = document.createElement('article');
+                    card.className = "repo-card";
+                    
+                    const header = document.createElement('div');
+                    header.className = "repo-header";
+
+                    const titleText = document.createElement('h2');
+                    titleText.className = "repo-title";
+                    titleText.textContent = repo.name; 
+                    
+                    const description = document.createElement('p');
+                    description.className = "repo-desc";
+                    description.textContent = repo.description || "No description available.";
+
+                    header.appendChild(titleText);
+                    header.appendChild(description);
+
+                    const footer = document.createElement('div');
+                    footer.className = "repo-footer";
+                    
+                    const statsRow = document.createElement('div');
+                    statsRow.className = "repo-stats";
+                    
+                    const language = document.createElement('span');
+                    language.className = "stat-item";
+                    language.textContent = repo.language ? `● ${repo.language}` : "● N/A";
+                    
+                    const stars = document.createElement('span');
+                    stars.className = "stat-item";
+                    const starIcon = document.createElement("span");
+                    starIcon.className = "stat-star";
+                    starIcon.textContent = "★";
+                    const starCount = document.createElement("span");
+                    starCount.textContent = repo.stargazers_count;
+                    stars.appendChild(starIcon);
+                    stars.appendChild(starCount);
+                    
+                    const forks = document.createElement('span');
+                    forks.className = "stat-item";
+                    forks.textContent = `🍴 ${repo.forks_count}`;
+
+                    const dateObj = new Date(repo.updated_at);
+                    const updated = document.createElement('span');
+                    updated.className = "stat-item";
+                    updated.textContent = `Updated: ${dateObj.toLocaleDateString('en-GB')}`;
+
+                    statsRow.appendChild(language);
+                    statsRow.appendChild(stars);
+                    statsRow.appendChild(forks);
+                    statsRow.appendChild(updated);
+
+                    const openLink = document.createElement('a');
+                    openLink.href = repo.html_url; 
+                    openLink.target = "_blank";
+                    openLink.rel = "noopener noreferrer";
+                    openLink.className = "repo-link";
+                    openLink.textContent = "Open Repository";
+                    openLink.setAttribute('aria-label', `Open ${repo.name} repository on GitHub`);
+
+                    footer.appendChild(statsRow);
+                    footer.appendChild(openLink);
+
+                    card.appendChild(header);
+                    card.appendChild(footer);
+
+                    this.els.resultsGrid.appendChild(card);
+                });
+            }
+        };
+
+        /**
+         * MODULE: App
+         */
+        const App = {
+            state: {
+                data: [], 
+                lastUsername: ""
+            },
+
+            init() {
+                UI.els.form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.handleSearch(UI.els.input.value.trim());
+                });
+
+                UI.els.retryBtn.addEventListener('click', () => {
+                    this.handleSearch(UI.els.input.value.trim());
+                });
+
+                UI.els.sortSelect.addEventListener('change', (e) => this.handleSort(e.target.value));
+                
+                UI.els.exportBtn.addEventListener('click', () => {
+                    Export.toCSV(this.state.data, this.state.lastUsername);
+                    console.log(`[Analytics] Exported ${this.state.data.length} repositories for "${this.state.lastUsername}"`);
+                });
+
+                window.addEventListener('offline', () => UI.setNetworkStatus(false));
+                window.addEventListener('online', () => UI.setNetworkStatus(true));
+            },
+
+            async handleSearch(rawUsername) {
+                UI.clearInputError();
+
+                if (!rawUsername) {
+                    UI.showInputError("Please enter a GitHub username.");
+                    return;
+                }
+                
+                if (!Validation.isValidUsername(rawUsername)) {
+                    UI.showInputError("Invalid GitHub username. Only letters, numbers and hyphens are allowed.");
+                    return;
+                }
+
+                UI.showLoading();
+
+                if (!navigator.onLine) {
+                    // Brief delay so the user sees the loading state triggering when clicking Retry
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    UI.hideLoading();
+                    UI.showMessage("No internet connection detected. Please reconnect and try again.", true, true);
+                    return;
+                }
+
+                if (rawUsername.toLowerCase() === this.state.lastUsername.toLowerCase() && this.state.data.length > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    console.log(`[Analytics] Served cached results for "${rawUsername}"`);
+                    UI.hideLoading();
+                    UI.renderRepositories(this.state.data, rawUsername);
+                    
+                    // FIXED: Use preventScroll: true to avoid the layout jump upward
+                    UI.els.resultsSection.focus({ preventScroll: true });
+                    return;
+                }
+
+                this.state.lastUsername = rawUsername;
+
+                try {
+                    const data = await API.fetchAllRepositories(rawUsername);
+                    this.state.data = data;
+                    
+                    UI.els.sortSelect.value = 'updated';
+                    this.handleSort('updated');
+                    
+                    // FIXED: Use preventScroll: true to avoid the layout jump upward
+                    UI.els.resultsSection.focus({ preventScroll: true });
+                    console.log(`[Analytics] User searched "${rawUsername}", Repositories returned: ${data.length}`);
+
+                } catch (error) {
+                    let errorMsg = error.message;
+                    let showRetry = false;
+                    
+                    if (error.name === 'AbortError') {
+                        errorMsg = "Request timed out. Please try again.";
+                        showRetry = true;
+                    } else if (errorMsg.includes("Service temporarily unavailable")) {
+                        showRetry = true;
+                    } else if (error.name === 'TypeError' || errorMsg.includes('Failed to fetch') || errorMsg.includes('Network error')) {
+                        errorMsg = "Unable to connect. Please check your internet connection.";
+                        showRetry = true;
+                    }
+                    
+                    UI.showMessage(errorMsg, true, showRetry);
+                } finally {
+                    UI.hideLoading();
+                }
+            },
+
+            handleSort(sortBy) {
+                if (sortBy === 'stars') {
+                    this.state.data.sort((a, b) => b.stargazers_count - a.stargazers_count);
+                } else if (sortBy === 'name') {
+                    this.state.data.sort((a, b) => a.name.localeCompare(b.name));
+                } else {
+                    this.state.data.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+                }
+                
+                UI.renderRepositories(this.state.data, this.state.lastUsername);
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => App.init());
+    </script>
+</body>
+</html>
