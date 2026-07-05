@@ -1,4 +1,4 @@
-# GitHub Repositories Fetcher (Sprint 03)
+# GitHub Repositories Fetcher
 
 A responsive and interactive web application built using **HTML5, CSS3, and Vanilla JavaScript (ES6+)** that retrieves public GitHub repositories through the GitHub REST API. The application provides secure input validation, asynchronous API communication, repository sorting, CSV export, offline detection, and accessible user feedback while maintaining a clean, framework-free architecture.
 
@@ -8,7 +8,7 @@ This project was developed as part of **Sprint 03** to demonstrate practical kno
 
 ## Live Demo
 
-**Live Deployment:** *Add Deployment URL Here*
+*https://fetch-github-repos.vercel.app/*
 
 ---
 
