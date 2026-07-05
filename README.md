@@ -169,17 +169,6 @@ The project demonstrates:
 
 ---
 
-## Project Structure
-
-```text
-project/
-│
-├── index.html
-├── style.css
-├── script.js
-├── README.md
-└── assets/
-```
 
 ---
 
